@@ -1,8 +1,30 @@
 <?php
 session_start();
-$config = require 'config.php';
-$emojis = $config['emojis'];
 $isRegistered = !empty($_SESSION['registered']);
+$username = $_SESSION['username'] ?? '';
+
+// Emojis used as the card faces (no separate config.php required).
+$emojis = [
+    '😀','😃','😄','😁','😆','😅','😂','🙂','🙃','😉',
+    '😊','😇','😍','😘','🥰','😋','😛','😜','🤪','🤩',
+    '🤑','🤗','🤔','🤨','😎','🥳','😴','🤖','👾','🎮',
+    '🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯',
+    '🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🦄','🐙',
+    '🌸','🌼','🌻','🍕','🍔','🍟','🌮','🍣','🍩','🧁','🍪'
+];
+
+$bestLevels = [0, 0, 0];
+// Read previous best scores (per level) so we can highlight during gameplay.
+$storePath = __DIR__ . '/leaderboard_store.json';
+if ($isRegistered && $username !== '' && file_exists($storePath)) {
+    $store = json_decode((string) file_get_contents($storePath), true);
+    $levels = $store['users'][$username]['levels'] ?? null;
+    if (is_array($levels)) {
+        for ($i = 0; $i < 3; $i++) {
+            $bestLevels[$i] = (int) ($levels[$i] ?? 0);
+        }
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -14,8 +36,28 @@ $isRegistered = !empty($_SESSION['registered']);
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-
-<?php include 'navbar.php'; ?>
+<?php
+// Inline navbar (navbar.php removed for the strict page structure).
+$avatar = $_SESSION['avatar'] ?? ($_COOKIE['avatar'] ?? null);
+?>
+<nav class="navbar-custom">
+    <div class="nav-left">
+        <a href="index.php" name="home">Home</a>
+    </div>
+    <div class="nav-right">
+        <a href="pairs.php" name="memory">Play Pairs</a>
+        <?php if (!empty($_SESSION['registered'])): ?>
+            <a href="leaderboard.php" name="leaderboard">Leaderboard</a>
+        <?php else: ?>
+            <a href="registration.php" name="register">Register</a>
+        <?php endif; ?>
+        <?php if (!empty($avatar)): ?>
+            <img src="<?php echo htmlspecialchars($avatar); ?>" alt="Avatar" class="nav-avatar">
+        <?php elseif (!empty($_SESSION['emoji'])): ?>
+            <span class="nav-emoji"><?php echo htmlspecialchars($_SESSION['emoji']); ?></span>
+        <?php endif; ?>
+    </div>
+</nav>
 
 <div id="main">
     <div class="game-container" id="gameContainer">
@@ -40,7 +82,8 @@ $isRegistered = !empty($_SESSION['registered']);
             <?php if ($isRegistered): ?>
                 <div class="game-actions">
                     <form method="post" action="leaderboard.php" id="submitForm" style="display: inline;">
-                        <input type="hidden" name="score" id="submitScore" value="0">
+                        <input type="hidden" name="totalScore" id="submitTotalScore" value="0">
+                        <input type="hidden" name="levelScores" id="submitLevelScores" value="[]">
                         <input type="hidden" name="username" value="<?php echo htmlspecialchars($_SESSION['username'] ?? ''); ?>">
                         <button type="submit" class="btn btn-primary">Submit Score</button>
                     </form>
@@ -57,6 +100,7 @@ $isRegistered = !empty($_SESSION['registered']);
 (function() {
     const EMOJIS = <?php echo json_encode($emojis); ?>;
     const IS_REGISTERED = <?php echo $isRegistered ? 'true' : 'false'; ?>;
+    const PREV_BESTS = <?php echo json_encode($bestLevels); ?>;
 
     // Level config: [cardsTotal, matchSize, maxGuesses]
     const LEVELS = [
@@ -65,7 +109,9 @@ $isRegistered = !empty($_SESSION['registered']);
         [16, 4, 24],  // Level 3: 16 cards, match 4 (4 sets), 24 guesses
     ];
 
-    const STORAGE_KEY = 'pairs_best_scores';
+    const MAX_LEVEL_POINTS = 1000;
+    const MOVE_PENALTY = 25;
+    const TIME_PENALTY = 5;
 
     const startBtn = document.getElementById('startBtn');
     const gameHeader = document.getElementById('gameHeader');
@@ -78,7 +124,8 @@ $isRegistered = !empty($_SESSION['registered']);
     const scoreDisplay = document.getElementById('scoreDisplay');
     const guessesLeftDisplay = document.getElementById('guessesLeftDisplay');
     const finalScoreEl = document.getElementById('finalScore');
-    const submitScoreEl = document.getElementById('submitScore');
+    const submitTotalScoreEl = document.getElementById('submitTotalScore');
+    const submitLevelScoresEl = document.getElementById('submitLevelScores');
     const playAgainBtn = document.getElementById('playAgainBtn');
     const gameContainer = document.getElementById('gameContainer');
     const gameResultTitle = document.getElementById('gameResultTitle');
@@ -93,9 +140,17 @@ $isRegistered = !empty($_SESSION['registered']);
         timerId: null,
         totalScore: 0,
         levelScores: [],
-        bestScores: JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'),
+        levelMoves: [],
+        levelTimes: [],
+        prevBestForLevel: 0,
+        bestExceededForLevel: false,
         guessesLeft: 0,
     };
+
+    function computeLevelPoints(moves, timeSec) {
+        // Higher moves/time => fewer points. Points are clamped at 0.
+        return Math.max(0, MAX_LEVEL_POINTS - moves * MOVE_PENALTY - timeSec * TIME_PENALTY);
+    }
 
     function shuffle(arr) {
         const a = [...arr];
@@ -127,6 +182,11 @@ $isRegistered = !empty($_SESSION['registered']);
             return;
         }
         const [numCards, matchSize, maxGuesses] = cfg;
+
+        state.prevBestForLevel = (PREV_BESTS[state.level] || 0);
+        state.bestExceededForLevel = false;
+        gameContainer.classList.remove('best-score');
+
         state.cards = buildDeck(numCards, matchSize);
         state.flipped = [];
         state.matched = 0;
@@ -159,6 +219,16 @@ $isRegistered = !empty($_SESSION['registered']);
         if (!state.startTime) return;
         const sec = Math.floor((Date.now() - state.startTime) / 1000);
         timeDisplay.textContent = sec + 's';
+
+        // Gold highlight once the estimated score for the current level exceeds
+        // the previous best for that level.
+        if (IS_REGISTERED && !state.bestExceededForLevel) {
+            const estimated = computeLevelPoints(state.moves, sec);
+            if (estimated > state.prevBestForLevel) {
+                state.bestExceededForLevel = true;
+                gameContainer.classList.add('best-score');
+            }
+        }
     }
 
     function handleCardClick(card) {
@@ -201,18 +271,12 @@ $isRegistered = !empty($_SESSION['registered']);
     function levelComplete() {
         clearInterval(state.timerId);
         const timeSec = Math.floor((Date.now() - state.startTime) / 1000);
-        const cfg = LEVELS[state.level];
-        const levelPoints = Math.max(0, 1000 - state.moves * 25 - timeSec * 5);
+
+        const levelPoints = computeLevelPoints(state.moves, timeSec);
+        state.levelMoves.push(state.moves);
+        state.levelTimes.push(timeSec);
         state.levelScores.push(levelPoints);
         state.totalScore += levelPoints;
-
-        const levelKey = 'level' + (state.level + 1);
-        const prevBest = (state.bestScores[levelKey] || 0);
-        if (levelPoints > prevBest) {
-            state.bestScores[levelKey] = levelPoints;
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state.bestScores));
-            gameContainer.classList.add('best-score');
-        }
 
         scoreDisplay.textContent = state.totalScore;
         state.level++;
@@ -231,14 +295,24 @@ $isRegistered = !empty($_SESSION['registered']);
         gameContainer.classList.remove('best-score');
         gameResultTitle.textContent = isWin ? 'Game Complete!' : 'Game Over';
         finalScoreEl.textContent = state.totalScore;
-        if (submitScoreEl) submitScoreEl.value = state.totalScore;
+
+        if (submitTotalScoreEl) submitTotalScoreEl.value = String(state.totalScore);
+        if (submitLevelScoresEl) {
+            // Always submit a fixed-length array for 3 levels.
+            const submission = [...state.levelScores];
+            while (submission.length < LEVELS.length) submission.push(0);
+            submitLevelScoresEl.value = JSON.stringify(submission.slice(0, LEVELS.length));
+        }
     }
 
     function startGame() {
         state.level = 0;
         state.totalScore = 0;
         state.levelScores = [];
-        state.bestScores = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+        state.levelMoves = [];
+        state.levelTimes = [];
+        state.prevBestForLevel = 0;
+        state.bestExceededForLevel = false;
         gameContainer.classList.remove('best-score');
         gameComplete.style.display = 'none';
         gameHeader.style.display = 'none';
@@ -256,6 +330,8 @@ $isRegistered = !empty($_SESSION['registered']);
             playAgainBtn.addEventListener('click', () => {
                 state.totalScore = 0;
                 state.levelScores = [];
+                state.levelMoves = [];
+                state.levelTimes = [];
                 gameComplete.style.display = 'none';
                 gameBoardWrapper.style.display = 'block';
                 gameHeader.style.display = 'none';
