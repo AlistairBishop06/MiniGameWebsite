@@ -4,7 +4,6 @@ session_start();
 $message = '';
 $usernameError = '';
 
-// Default values from existing session or cookies
 $username = $_SESSION['username'] ?? ($_COOKIE['username'] ?? '');
 $avatar = $_SESSION['avatar'] ?? ($_COOKIE['avatar'] ?? '');
 
@@ -12,7 +11,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
     $avatar = $_POST['avatar'] ?? '';
 
-    // Invalid characters set: " ! @ # % &ˆ* ( ) + = { } [ ] — ; : “ ’ < > ? /
     $invalidPattern = '/["!@#%\^*\(\)\+=\{\}\[\]—;:“\'<>?\/]/u';
 
     if ($username === '') {
@@ -26,7 +24,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['username'] = $username;
         $_SESSION['avatar'] = $avatar;
 
-        // Store profile information in cookies (no database required)
         $expiry = time() + (7 * 24 * 60 * 60); // 7 days
         setcookie('username', $username, $expiry, '/');
         if ($avatar !== '') {
@@ -48,7 +45,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body>
 <?php
-// Inline navbar (navbar.php removed for the strict page structure).
 $avatar = $_SESSION['avatar'] ?? ($_COOKIE['avatar'] ?? null);
 ?>
 <nav class="navbar-custom">
@@ -126,6 +122,33 @@ $avatar = $_SESSION['avatar'] ?? ($_COOKIE['avatar'] ?? null);
                             <?php if ($avatar === 'avatar3.png') echo 'checked'; ?>
                         >
                         <img src="avatar3.png" alt="Avatar 3">
+                    </label>
+                    <label>
+                        <input
+                            type="radio"
+                            name="avatar"
+                            value="avatar4.png"
+                            <?php if ($avatar === 'avatar4.png') echo 'checked'; ?>
+                        >
+                        <img src="avatar4.png" alt="Avatar 4">
+                    </label>
+                    <label>
+                        <input
+                            type="radio"
+                            name="avatar"
+                            value="avatar5.png"
+                            <?php if ($avatar === 'avatar5.png') echo 'checked'; ?>
+                        >
+                        <img src="avatar5.png" alt="Avatar 5">
+                    </label>
+                    <label>
+                        <input
+                            type="radio"
+                            name="avatar"
+                            value="avatar6.png"
+                            <?php if ($avatar === 'avatar6.png') echo 'checked'; ?>
+                        >
+                        <img src="avatar6.png" alt="Avatar 6">
                     </label>
                 </div>
             </div>

@@ -22,7 +22,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
     $levelScores = json_decode((string) ($_POST['levelScores'] ?? '[]'), true);
 
-    // Only accept submissions from the currently registered session.
     $sessionRegistered = !empty($_SESSION['registered']);
     $sessionUsername = $_SESSION['username'] ?? '';
 
@@ -36,7 +35,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
         }
 
-        // Update per-level bests.
         for ($i = 0; $i < 3; $i++) {
             $submitted = (int) ($levelScores[$i] ?? 0);
             $currentBest = (int) ($store['users'][$username]['levels'][$i] ?? 0);
@@ -45,7 +43,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // Update total best.
         $currentTotalBest = (int) ($store['users'][$username]['total'] ?? 0);
         if ($totalScore > $currentTotalBest) {
             $store['users'][$username]['total'] = $totalScore;

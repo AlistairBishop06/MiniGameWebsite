@@ -3,7 +3,6 @@ session_start();
 $isRegistered = !empty($_SESSION['registered']);
 $username = $_SESSION['username'] ?? '';
 
-// Emojis used as the card faces (no separate config.php required).
 $emojis = [
     '😀','😃','😄','😁','😆','😅','😂','🙂','🙃','😉',
     '😊','😇','😍','😘','🥰','😋','😛','😜','🤪','🤩',
@@ -14,7 +13,7 @@ $emojis = [
 ];
 
 $bestLevels = [0, 0, 0];
-// Read previous best scores (per level) so we can highlight during gameplay.
+
 $storePath = __DIR__ . '/leaderboard_store.json';
 if ($isRegistered && $username !== '' && file_exists($storePath)) {
     $store = json_decode((string) file_get_contents($storePath), true);
@@ -37,7 +36,6 @@ if ($isRegistered && $username !== '' && file_exists($storePath)) {
 </head>
 <body>
 <?php
-// Inline navbar (navbar.php removed for the strict page structure).
 $avatar = $_SESSION['avatar'] ?? ($_COOKIE['avatar'] ?? null);
 ?>
 <nav class="navbar-custom">
@@ -102,11 +100,10 @@ $avatar = $_SESSION['avatar'] ?? ($_COOKIE['avatar'] ?? null);
     const IS_REGISTERED = <?php echo $isRegistered ? 'true' : 'false'; ?>;
     const PREV_BESTS = <?php echo json_encode($bestLevels); ?>;
 
-    // Level config: [cardsTotal, matchSize, maxGuesses]
     const LEVELS = [
-        [8, 2, 12],   // Level 1: 8 cards, match 2 (4 pairs), 12 guesses
-        [12, 3, 18],  // Level 2: 12 cards, match 3 (4 sets), 18 guesses
-        [16, 4, 24],  // Level 3: 16 cards, match 4 (4 sets), 24 guesses
+        [8, 2, 12],  
+        [12, 3, 18],  
+        [16, 4, 24],  
     ];
 
     const MAX_LEVEL_POINTS = 1000;
@@ -148,7 +145,6 @@ $avatar = $_SESSION['avatar'] ?? ($_COOKIE['avatar'] ?? null);
     };
 
     function computeLevelPoints(moves, timeSec) {
-        // Higher moves/time => fewer points. Points are clamped at 0.
         return Math.max(0, MAX_LEVEL_POINTS - moves * MOVE_PENALTY - timeSec * TIME_PENALTY);
     }
 
@@ -220,8 +216,6 @@ $avatar = $_SESSION['avatar'] ?? ($_COOKIE['avatar'] ?? null);
         const sec = Math.floor((Date.now() - state.startTime) / 1000);
         timeDisplay.textContent = sec + 's';
 
-        // Gold highlight once the estimated score for the current level exceeds
-        // the previous best for that level.
         if (IS_REGISTERED && !state.bestExceededForLevel) {
             const estimated = computeLevelPoints(state.moves, sec);
             if (estimated > state.prevBestForLevel) {
@@ -298,7 +292,6 @@ $avatar = $_SESSION['avatar'] ?? ($_COOKIE['avatar'] ?? null);
 
         if (submitTotalScoreEl) submitTotalScoreEl.value = String(state.totalScore);
         if (submitLevelScoresEl) {
-            // Always submit a fixed-length array for 3 levels.
             const submission = [...state.levelScores];
             while (submission.length < LEVELS.length) submission.push(0);
             submitLevelScoresEl.value = JSON.stringify(submission.slice(0, LEVELS.length));
